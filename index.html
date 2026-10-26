@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>@NaTela</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#fff; font-family:Arial,Helvetica,sans-serif; }
+    #entry { position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; background:#fff; }
+    #form { display:flex; align-items:stretch; gap:8px; width:min(420px,calc(100vw - 32px)); }
+    #username { flex:1; min-width:0; height:46px; border:1px solid #d5d5d5; border-radius:7px; padding:0 14px; font-size:16px; outline:none; color:#222; background:#fff; }
+    #username:focus { border-color:#888; }
+    #submit, #verifyButton { height:46px; border:1px solid #d5d5d5; border-radius:7px; padding:0 16px; background:#f5f5f5; color:#222; font-size:15px; cursor:pointer; }
+    #submit:disabled, #verifyButton:disabled { opacity:.55; cursor:wait; }
+    #error { position:absolute; top:calc(50% + 38px); left:16px; right:16px; text-align:center; color:#b42318; font-size:14px; line-height:1.4; padding:0 8px; }
+    #playfield { position:fixed; inset:0; background:#fff; display:none; }
+    .moving-name { position:absolute; left:0; top:0; white-space:nowrap; color:#111; font-size:clamp(18px,3vw,28px); font-weight:500; text-decoration:none; user-select:none; will-change:transform; }
+    a.moving-name:hover { text-decoration:underline; cursor:pointer; }
+    span.moving-name { cursor:default; }
+    .name-text { white-space:nowrap; }
+    .name-decoration { margin-left:4px; }
+    #verifyPanel { position:fixed; z-index:5; right:12px; top:12px; display:flex; gap:8px; align-items:center; max-width:calc(100vw - 24px); }
+    #verifyButton { height:auto; min-height:40px; background:#fff; box-shadow:0 1px 5px #0001; }
+    #verifyStatus { position:fixed; z-index:6; top:62px; right:12px; max-width:min(360px,calc(100vw - 24px)); padding:10px 12px; border:1px solid #ddd; border-radius:8px; background:#fff; color:#333; font-size:13px; line-height:1.4; display:none; box-shadow:0 2px 8px #0001; }
+    #requestBackdrop { position:fixed; inset:0; z-index:20; display:none; align-items:center; justify-content:center; padding:16px; background:#0004; }
+    #requestCard { width:min(420px,100%); padding:22px; border:1px solid #e5e5e5; border-radius:12px; background:#fff; box-shadow:0 10px 35px #0002; }
+    #requestTitle { margin:0 0 8px; font-size:20px; font-weight:600; color:#111; }
+    #requestHelp { margin:0 0 16px; color:#555; font-size:14px; line-height:1.45; }
+    #requestUsername { width:100%; height:44px; padding:0 12px; border:1px solid #d5d5d5; border-radius:7px; font-size:16px; }
+    #requestActions { display:flex; gap:8px; margin-top:12px; }
+    #requestActions button { flex:1; min-height:42px; border:1px solid #d5d5d5; border-radius:7px; padding:8px 12px; background:#f5f5f5; color:#222; font-size:14px; cursor:pointer; }
+    #requestMessage { margin-top:12px; color:#333; font-size:13px; line-height:1.4; }
+    #requestConfirm:disabled { opacity:.55; cursor:wait; }
+    #rewardPanel { position:fixed; z-index:4; left:12px; bottom:12px; width:min(350px,calc(100vw - 24px)); padding:13px 15px; border:1px solid #e5e5e5; border-radius:12px; background:rgba(255,255,255,.96); color:#222; box-shadow:0 3px 14px #0000000d; font-size:13px; line-height:1.45; display:none; }
+    #rewardHeading { display:flex; align-items:center; justify-content:space-between; gap:8px; font-weight:700; font-size:14px; margin-bottom:5px; }
+    #rewardClose { border:0; background:transparent; color:#555; padding:2px 6px; font-size:18px; cursor:pointer; }
+    #rewardNickname { font-weight:700; margin:3px 0 5px; overflow-wrap:anywhere; }
+    #rewardTip { color:#444; }
+    #rewardProgress { height:5px; border-radius:9px; background:#eee; overflow:hidden; margin-top:9px; }
+    #rewardProgressFill { height:100%; width:1%; background:#222; transition:width .2s; }
+    #rewardDayLabel { color:#666; font-size:11px; margin-top:5px; }
+    @media (max-width:480px) { #submit { padding:0 12px; } #verifyButton { font-size:13px; padding:9px 11px; } }
+  </style>
+</head>
+<body>
+  <section id="entry" aria-label="Digite seu nome">
+    <form id="form">
+      <input id="username" type="text" maxlength="30" placeholder="Digite seu @ do Instagram" aria-label="Nome de usuário do Instagram" autocomplete="off" required>
+      <button id="submit" type="submit">Confirmar</button>
+    </form>
+    <div id="error" role="status" aria-live="polite"></div>
+  </section>
+  <main id="playfield" aria-label="Tela branca com nomes em movimento"></main>
+  <div id="verifyPanel" style="display:none">
+    <button id="verifyButton" type="button">Me torne clicável</button>
+  </div>
+  <div id="verifyStatus" role="status" aria-live="polite"></div>
+  <section id="rewardPanel" aria-live="polite" aria-label="Recompensa diária">
+    <div id="rewardHeading"><span>🏆 Recompensa diária</span><button id="rewardClose" type="button" aria-label="Fechar recompensa">×</button></div>
+    <div id="rewardNickname"></div>
+    <div id="rewardTip"></div>
+    <div id="rewardProgress"><div id="rewardProgressFill"></div></div>
+    <div id="rewardDayLabel"></div>
+  </section>
+  <div id="requestBackdrop" role="dialog" aria-modal="true" aria-labelledby="requestTitle">
+    <div id="requestCard">
+      <h2 id="requestTitle">Me torne clicável</h2>
+      <p id="requestHelp">Digite o @ que já aparece no site e um e-mail ao qual você tem acesso. Enviaremos um código de 6 dígitos para seu e-mail. Isso confirma acesso ao e-mail, não a propriedade do Instagram.</p>
+      <form id="requestForm">
+        <input id="requestUsername" type="text" maxlength="31" placeholder="@seuusuario" autocomplete="off" required aria-label="Seu @ do Instagram">
+        <input id="requestEmail" type="email" maxlength="254" placeholder="Seu e-mail" autocomplete="email" required aria-label="Seu endereço de e-mail" style="width:100%;height:44px;padding:0 12px;border:1px solid #d5d5d5;border-radius:7px;font-size:16px;margin-top:8px">
+        <div id="requestActions">
+          <button type="button" id="requestCancel">Cancelar</button>
+          <button type="submit" id="requestConfirm">Enviar código</button>
+        </div>
+        <div id="otpArea" style="display:none;margin-top:12px">
+          <label for="requestOtp" style="display:block;font-size:14px;color:#333;margin-bottom:6px">Código de 6 dígitos</label>
+          <input id="requestOtp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456" aria-label="Código de confirmação por e-mail" style="width:100%;height:44px;padding:0 12px;border:1px solid #d5d5d5;border-radius:7px;font-size:18px;letter-spacing:4px">
+          <button type="button" id="verifyOtpButton" style="width:100%;margin-top:8px;min-height:42px;border:1px solid #d5d5d5;border-radius:7px;background:#f5f5f5;color:#222;font-size:14px;cursor:pointer">Confirmar código</button>
+        </div>
+      </form>
+      <div id="requestMessage" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    // A chave publicável pode ficar no navegador. Nunca coloque META_APP_SECRET nem chave secreta Supabase aqui.
+    const SUPABASE_URL = 'https://ykoevayoluedsjzjfrmx.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_z8p6IOwY4sO5FwSH4B3U2w_Arrp5tYH';
+    const TABLE = 'instagram_names';
+    const DECORATION_TABLE = 'instagram_daily_decorations';
+    const VERIFICATION_REQUESTS_TABLE = 'instagram_click_requests';
+
+    const entry = document.getElementById('entry');
+    const form = document.getElementById('form');
+    const input = document.getElementById('username');
+    const error = document.getElementById('error');
+    const submit = document.getElementById('submit');
+    const playfield = document.getElementById('playfield');
+    const verifyPanel = document.getElementById('verifyPanel');
+    const verifyButton = document.getElementById('verifyButton');
+    const verifyStatus = document.getElementById('verifyStatus');
+    const requestBackdrop = document.getElementById('requestBackdrop');
+    const requestForm = document.getElementById('requestForm');
+    const requestUsername = document.getElementById('requestUsername');
+    const requestEmail = document.getElementById('requestEmail');
+    const rewardPanel = document.getElementById('rewardPanel');
+    const rewardNickname = document.getElementById('rewardNickname');
+    const rewardTip = document.getElementById('rewardTip');
+    const rewardProgressFill = document.getElementById('rewardProgressFill');
+    const rewardDayLabel = document.getElementById('rewardDayLabel');
+    document.getElementById('rewardClose').addEventListener('click', () => rewardPanel.style.display = 'none');
+    const requestConfirm = document.getElementById('requestConfirm');
+    const requestCancel = document.getElementById('requestCancel');
+    const requestMessage = document.getElementById('requestMessage');
+    const otpArea = document.getElementById('otpArea');
+    const requestOtp = document.getElementById('requestOtp');
+    const verifyOtpButton = document.getElementById('verifyOtpButton');
+    let pendingVerification = null;
+
+    let supabaseClient = null;
+    let started = false;
+    let previous = 0;
+    const tags = new Map();
+    const nameElements = new Map();
+    let currentRewardUsername = null;
+    let lastRewardDate = new Intl.DateTimeFormat('en-CA', { timeZone:'America/Sao_Paulo', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+    const decorationsByName = new Map();
+
+
+    const HEALTH_TIPS = [
+  "Beba água regularmente ao longo do dia, ajustando a quantidade ao calor e à sua atividade.",
+  "Inclua frutas variadas na rotina; frutas inteiras também fornecem fibras.",
+  "Tente incluir verduras ou legumes em mais de uma refeição do dia.",
+  "Faça pequenas pausas para se levantar se passar muito tempo sentado.",
+  "Manter horários de sono relativamente regulares pode ajudar o descanso.",
+  "Escove os dentes com creme dental fluoretado e use fio dental diariamente.",
+  "Lave as mãos com água e sabão antes de comer e depois de usar o banheiro.",
+  "Caminhar um pouco já é melhor do que ficar parado; comece no seu ritmo.",
+  "Varie os alimentos ao longo da semana em vez de depender sempre dos mesmos.",
+  "Ao sentir sede, tenha água por perto e faça pausas para beber.",
+  "Prefira frutas inteiras com frequência em vez de depender apenas de sucos.",
+  "Inclua alimentos ricos em fibras, como feijão, aveia, frutas e verduras.",
+  "Comer com calma ajuda você a perceber melhor a fome e a saciedade.",
+  "Planejar algumas refeições pode facilitar escolhas variadas durante a semana.",
+  "Sempre que possível, combine fontes de proteína com legumes e grãos.",
+  "Reduza o excesso de sal usando ervas, alho, limão e outros temperos.",
+  "Observe a validade e conserve os alimentos conforme as orientações da embalagem.",
+  "Evite pular refeições apenas por pressa; organize uma rotina que funcione para você.",
+  "Escolha lanches simples, como fruta, iogurte ou castanhas, conforme suas necessidades.",
+  "Não existe alimento isolado que resolva tudo: variedade e equilíbrio importam.",
+  "Crie um horário tranquilo para desacelerar antes de dormir.",
+  "Deixe o quarto escuro, silencioso e confortável sempre que possível.",
+  "Evite cafeína perto do horário de dormir se perceber que atrapalha seu sono.",
+  "Exponha-se à luz natural pela manhã quando puder; isso ajuda a regular o relógio biológico.",
+  "Se acordar cansado com frequência, observe sua rotina e procure orientação se persistir.",
+  "Tente manter horários parecidos para dormir e acordar, inclusive nos fins de semana.",
+  "Diminua estímulos e notificações na hora de se preparar para dormir.",
+  "Uma rotina relaxante, como leitura leve, pode ajudar a sinalizar que é hora de descansar.",
+  "Evite refeições muito pesadas imediatamente antes de deitar se isso lhe causar desconforto.",
+  "O sono varia de pessoa para pessoa; adultos geralmente precisam de 7 a 9 horas.",
+  "Faça alongamentos suaves durante pausas, sem forçar movimentos dolorosos.",
+  "Use escadas ou caminhe pequenos trechos quando isso for seguro e confortável.",
+  "Procure somar atividade física ao longo da semana de uma forma que goste.",
+  "Aumente a intensidade dos exercícios aos poucos, respeitando seus limites.",
+  "Use calçados confortáveis para caminhadas e atividades do dia a dia.",
+  "Alterne períodos sentado com momentos em pé ou caminhando.",
+  "Se trabalha no computador, relaxe os ombros e ajuste a tela à sua postura.",
+  "Comece uma atividade nova devagar e aumente a duração gradualmente.",
+  "Dançar, cuidar do jardim ou brincar também pode contar como movimento.",
+  "Se sentir dor forte, tontura ou falta de ar incomum durante exercício, pare e procure orientação.",
+  "Reserve alguns minutos para respirar devagar e perceber como está se sentindo.",
+  "Faça uma pausa curta entre tarefas quando notar cansaço mental.",
+  "Conversar com alguém de confiança pode ajudar em dias difíceis.",
+  "Inclua no dia alguma atividade de lazer que realmente lhe faça bem.",
+  "Divida tarefas grandes em etapas menores para reduzir a sensação de sobrecarga.",
+  "Tente limitar notificações durante períodos em que precisa se concentrar.",
+  "Seja gentil consigo mesmo: descansar também faz parte de uma rotina saudável.",
+  "Passar um tempo ao ar livre pode ser uma forma agradável de fazer uma pausa.",
+  "Peça ajuda quando sentir que está difícil lidar com tudo sozinho.",
+  "Se o sofrimento emocional persistir, buscar apoio profissional é um cuidado válido.",
+  "Use protetor solar e reaplique conforme o rótulo, especialmente ao ficar ao ar livre.",
+  "Não compartilhe objetos pessoais como lâminas de barbear ou escovas de dentes.",
+  "Mantenha vacinas em dia conforme as recomendações dos serviços de saúde.",
+  "Agende consultas preventivas conforme sua idade, histórico e orientação profissional.",
+  "Ventile ambientes fechados quando possível e seguro.",
+  "Ao tossir ou espirrar, cubra nariz e boca com o antebraço ou lenço.",
+  "Evite fumar e procure apoio profissional se quiser parar de fumar.",
+  "Modere bebidas alcoólicas; não dirigir após beber é essencial para a segurança.",
+  "Confira as instruções e a dose indicada antes de usar qualquer medicamento.",
+  "Não compartilhe medicamentos nem use antibióticos sem orientação profissional.",
+  "Use cinto de segurança em todos os trajetos de carro, mesmo os curtos.",
+  "Faça pausas visuais ao usar telas por muito tempo e pisque com frequência.",
+  "Mantenha a vacinação e a higiene dos animais de estimação conforme orientação veterinária.",
+  "Limpe ferimentos pequenos com água corrente e procure atendimento se forem graves.",
+  "Cuide da audição: reduza o volume dos fones e faça pausas em ambientes barulhentos.",
+  "Evite colocar cotonetes ou objetos dentro do canal do ouvido.",
+  "Confira a ergonomia do local de trabalho e ajuste cadeira e tela ao seu corpo.",
+  "Use capacete adequado ao andar de bicicleta ou motocicleta.",
+  "Guarde produtos de limpeza e medicamentos fora do alcance de crianças.",
+  "Lave frutas e verduras em água potável antes de consumir.",
+  "Refrigere alimentos perecíveis prontamente e evite deixá-los horas fora da geladeira.",
+  "Observe mudanças persistentes no corpo e converse com um profissional de saúde.",
+  "Não ignore sintomas intensos ou súbitos; procure atendimento adequado.",
+  "Se usa lentes de contato, siga as orientações de limpeza e tempo de uso.",
+  "Troque e lave toalhas com regularidade e não compartilhe toalhas pessoais.",
+  "Mantenha ambientes livres de fumaça e, quando possível, reduza poeira acumulada.",
+  "Faça pausas ao dirigir em viagens longas para descansar e se movimentar.",
+  "Se trabalha em calor intenso, faça pausas, procure sombra e hidrate-se.",
+  "Em dias de calor, use roupas leves e fique atento a sinais de exaustão.",
+  "Tenha cuidado com alimentos crus e cozinhe carnes e ovos adequadamente.",
+  "Mantenha água potável e alimentos armazenados em recipientes limpos.",
+  "Pratique sexo seguro e procure serviços de saúde para orientações e testagem quando necessário.",
+  "A saúde bucal também depende de consultas odontológicas periódicas.",
+  "Evite usar a tela muito perto dos olhos e ajuste o brilho ao ambiente.",
+  "Faça pausas para relaxar as mãos e os punhos em tarefas repetitivas.",
+  "Ao levantar peso, aproxime a carga do corpo e evite movimentos bruscos.",
+  "Use equipamentos de proteção recomendados para atividades de risco.",
+  "Mantenha contatos de emergência acessíveis e conheça os serviços de saúde da sua região.",
+  "Leia rótulos para comparar açúcar, sódio e outros nutrientes quando isso ajudar suas escolhas.",
+  "Prefira água como bebida habitual e deixe bebidas açucaradas para consumo ocasional.",
+  "Não faça dietas extremas por conta própria; mudanças graduais tendem a ser mais sustentáveis.",
+  "Evite se comparar com rotinas de saúde de outras pessoas: necessidades variam.",
+  "Se toma remédios regularmente, converse com um profissional antes de mudar o uso.",
+  "Mantenha consultas e exames de acordo com recomendações adequadas ao seu caso.",
+  "Reserve um momento para verificar como estão sua energia, sono e humor.",
+  "Procure ajuda urgente diante de sinais de emergência, como dor no peito ou dificuldade intensa para respirar.",
+  "Aprenda técnicas básicas de primeiros socorros por meio de cursos confiáveis.",
+  "Mantenha uma rotina realista: pequenos hábitos repetidos podem fazer diferença.",
+  "Celebre seu progresso sem exigir perfeição; retomar um hábito também é sucesso.",
+  "No dia 100, continue escolhendo hábitos possíveis e procure orientação individual quando precisar."
+];
+    const TIER_DECORATIONS = [
+      {left:'',right:'',title:'Começando'},
+      {left:'✦ ',right:' ✦',title:'Primeiro brilho'},
+      {left:'✨ ',right:' ✨',title:'Brilhante'},
+      {left:'🌟『',right:'』🌟',title:'Estiloso'},
+      {left:'🔥༺',right:'༻🔥',title:'Flamejante'},
+      {left:'⚡『',right:'』⚡',title:'Energizado'},
+      {left:'💎༺',right:'༻💎',title:'Épico'},
+      {left:'🔱『',right:'』🔱',title:'Mítico'},
+      {left:'🌠༺',right:'༻🌠',title:'Celestial'},
+      {left:'👑༺🌌『',right:'』🌌༻👑',title:'Lenda Suprema'}
+    ];
+    const DAILY_MARKS = ['·','✦','✧','★','☆','❖','⁕','✺','❋','✹'];
+    function saoPauloDate(value) {
+      return new Intl.DateTimeFormat('en-CA', { timeZone:'America/Sao_Paulo', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date(value));
+    }
+    function getReward(row) {
+      const start = row.reward_started_at || row.created_at || new Date().toISOString();
+      const startDate = saoPauloDate(start).split('-').map(Number);
+      const todayDate = saoPauloDate(new Date()).split('-').map(Number);
+      const startUtc = Date.UTC(startDate[0], startDate[1]-1, startDate[2]);
+      const todayUtc = Date.UTC(todayDate[0], todayDate[1]-1, todayDate[2]);
+      const day = Math.max(1, Math.min(100, Math.floor((todayUtc-startUtc)/86400000)+1));
+      const tier = Math.min(9, Math.floor((day-1)/10));
+      const style = TIER_DECORATIONS[tier];
+      const mark = DAILY_MARKS[(day-1)%DAILY_MARKS.length];
+      const left = day === 1 ? '' : (tier === 0 ? mark + ' ' : style.left + mark);
+      const right = day === 1 ? '' : (tier === 0 ? ' ' + mark : mark + style.right);
+      const title = day === 100 ? 'Lenda Suprema' : (day === 1 ? 'Iniciante' : style.title);
+      return { day, left, right, title, tip: HEALTH_TIPS[day-1] };
+    }
+    function showDailyReward(row) {
+      currentRewardUsername = (row.username_normalized || row.username.toLowerCase()).toLowerCase();
+      const reward = getReward(row);
+      rewardNickname.textContent = reward.left + '@' + row.username + reward.right;
+      rewardTip.textContent = '💚 Dica de saúde: ' + reward.tip;
+      rewardProgressFill.style.width = reward.day + '%';
+      rewardDayLabel.textContent = 'Dia ' + reward.day + ' de 100 • ' + reward.title + (reward.day === 100 ? ' 👑' : '');
+      rewardPanel.style.display = 'block';
+    }
+
+    function showError(text) { error.textContent = text; }
+    function showVerifyStatus(text) {
+      verifyStatus.textContent = text;
+      verifyStatus.style.display = text ? 'block' : 'none';
+    }
+    function cleanUsername(value) { return value.trim().replace(/^@+/, ''); }
+    function validUsername(value) { return /^[a-zA-Z0-9._]{1,30}$/.test(value); }
+
+    function setupSupabase() {
+      if (!window.supabase || typeof window.supabase.createClient !== 'function') throw new Error('Não foi possível carregar o Supabase. Verifique a conexão com a internet.');
+      supabaseClient = supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+    }
+
+    function getDecorations(key) { return decorationsByName.get(key) || []; }
+
+    function renderName(row) {
+      const username = row.username;
+      const key = (row.username_normalized || username.toLowerCase()).toLowerCase();
+      const state = nameElements.get(key);
+      if (!state) return;
+      const verified = row.is_verified === true;
+      const oldEl = state.el;
+      const newEl = document.createElement(verified ? 'a' : 'span');
+      newEl.className = 'moving-name';
+      newEl.setAttribute('aria-label', '@' + username + (verified ? ', perfil verificado' : ', link ainda não autorizado'));
+      if (verified) {
+        newEl.href = 'https://www.instagram.com/' + encodeURIComponent(username) + '/';
+        newEl.target = '_blank';
+        newEl.rel = 'noopener noreferrer';
+        newEl.title = 'Abrir perfil autorizado no Instagram';
+      }
+      const nameText = document.createElement('span');
+      nameText.className = 'name-text';
+      const reward = getReward(row);
+      nameText.textContent = reward.left + '@' + username + reward.right;
+      newEl.appendChild(nameText);
+      const decoration = document.createElement('span');
+      decoration.className = 'name-decoration';
+      const effects = getDecorations(key);
+      const colors = effects.filter(e => e.effect_type === 'color');
+      const emojis = effects.filter(e => e.effect_type === 'emoji');
+      if (colors.length) nameText.style.color = colors[colors.length - 1].effect_value;
+      if (effects.some(e => e.effect_type === 'bold')) nameText.style.fontWeight = '700';
+      if (effects.some(e => e.effect_type === 'underline')) nameText.style.textDecoration = 'underline';
+      decoration.textContent = emojis.map(e => e.effect_value).join('');
+      newEl.appendChild(decoration);
+      newEl.style.transform = oldEl.style.transform || '';
+      oldEl.replaceWith(newEl);
+      state.el = newEl;
+      const tag = tags.get(key);
+      if (tag) tag.el = newEl;
+    }
+
+    function addName(row) {
+      if (!row || !row.username) return;
+      const key = (row.username_normalized || row.username.toLowerCase()).toLowerCase();
+      if (tags.has(key)) {
+        const state = nameElements.get(key);
+        if (state) { state.row = { ...state.row, ...row }; renderName(state.row); }
+        return;
+      }
+      const el = document.createElement('span');
+      el.className = 'moving-name';
+      playfield.appendChild(el);
+      nameElements.set(key, { el, row });
+      const maxX = Math.max(0, innerWidth - el.offsetWidth);
+      const maxY = Math.max(0, innerHeight - el.offsetHeight);
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 55 + Math.random() * 90;
+      tags.set(key, { el, x: Math.random() * maxX, y: Math.random() * maxY, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed });
+      renderName(row);
+    }
+
+    async function loadDecorations() {
+      const { data, error: readError } = await supabaseClient.from(DECORATION_TABLE).select('username_normalized,effect_type,effect_value').limit(5000);
+      if (readError) throw new Error('Não consegui carregar os detalhes dos nomes. Confira se a tabela de detalhes diários foi criada no Supabase.');
+      decorationsByName.clear();
+      (data || []).forEach(d => {
+        const key = d.username_normalized.toLowerCase();
+        if (!decorationsByName.has(key)) decorationsByName.set(key, []);
+        decorationsByName.get(key).push(d);
+      });
+    }
+
+    async function addDailyDecoration(usernameNormalized) {
+      const visitorId = (() => {
+        const key = 'atnatela_visitor_id_v1';
+        let id = localStorage.getItem(key);
+        if (!id) {
+          id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'v-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+          localStorage.setItem(key, id);
+        }
+        return id;
+      })();
+      const { error: rpcError } = await supabaseClient.rpc('add_daily_decoration', { p_username_normalized: usernameNormalized, p_visitor_id: visitorId });
+      if (rpcError) throw new Error('O nome foi enviado, mas o detalhe diário não pôde ser aplicado.');
+      const { data, error: readError } = await supabaseClient.from(DECORATION_TABLE).select('username_normalized,effect_type,effect_value').eq('username_normalized', usernameNormalized);
+      if (readError) throw new Error('Não consegui atualizar os detalhes do nome.');
+      decorationsByName.set(usernameNormalized, data || []);
+      const state = nameElements.get(usernameNormalized);
+      if (state) renderName(state.row);
+    }
+
+    async function startSharedScreen() {
+      if (started) return;
+      setupSupabase();
+      showError('Carregando…');
+      const { data, error: readError } = await supabaseClient.from(TABLE)
+        .select('username,username_normalized,is_verified,created_at,reward_started_at').order('created_at', { ascending: true }).limit(500);
+      if (readError) throw new Error('Não consegui ler os nomes. Confira as políticas RLS e a tabela instagram_names. Detalhe: ' + (readError.message || readError.code || 'erro desconhecido'));
+      await loadDecorations();
+      playfield.replaceChildren();
+      tags.clear(); nameElements.clear();
+      (data || []).forEach(addName);
+      entry.style.display = 'none';
+      playfield.style.display = 'block';
+      verifyPanel.style.display = 'flex';
+      started = true;
+      requestAnimationFrame(animate);
+
+      supabaseClient.channel('public-atnatela-updates')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: TABLE }, payload => addName(payload.new))
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: TABLE }, payload => addName(payload.new))
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: DECORATION_TABLE }, payload => {
+          const d = payload.new, key = d.username_normalized.toLowerCase();
+          const list = getDecorations(key).slice();
+          if (!list.some(x => x.effect_type === d.effect_type && x.effect_value === d.effect_value && x.username_normalized === d.username_normalized && x.created_at === d.created_at)) list.push(d);
+          decorationsByName.set(key, list);
+          const state = nameElements.get(key);
+          if (state) renderName(state.row);
+        })
+        .subscribe();
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const username = cleanUsername(input.value);
+      if (!validUsername(username)) { showError('Digite um @ válido: letras, números, ponto ou sublinhado.'); input.focus(); return; }
+      submit.disabled = true;
+      showError('Salvando…');
+      try {
+        setupSupabase();
+        const normalized = username.toLowerCase();
+        const { error: insertError } = await supabaseClient.from(TABLE).insert({ username, username_normalized: normalized });
+        if (insertError && insertError.code !== '23505') throw new Error('Não consegui salvar no banco: ' + (insertError.message || insertError.code || 'erro desconhecido'));
+        await startSharedScreen();
+        try { await addDailyDecoration(normalized); }
+        catch (decorationError) { console.warn(decorationError); showError(decorationError.message); }
+      const rewardRow = nameElements.get(normalized)?.row;
+      if (rewardRow) showDailyReward(rewardRow);
+      } catch (e) {
+        console.error(e);
+        showError(e.message || 'Não foi possível salvar. Verifique a conexão e as configurações do Supabase.');
+      } finally { submit.disabled = false; }
+    });
+
+    verifyButton.addEventListener('click', () => {
+      requestForm.reset();
+      requestUsername.disabled = false; requestEmail.disabled = false;
+      requestConfirm.style.display = ''; requestConfirm.disabled = false;
+      otpArea.style.display = 'none'; verifyOtpButton.style.display = ''; verifyOtpButton.disabled = false; requestOtp.style.display = '';
+      pendingVerification = null;
+      requestMessage.textContent = '';
+      requestBackdrop.style.display = 'flex';
+      requestUsername.focus();
+    });
+
+    requestCancel.addEventListener('click', () => {
+      requestBackdrop.style.display = 'none';
+      pendingVerification = null;
+    });
+
+    requestBackdrop.addEventListener('click', (event) => {
+      if (event.target === requestBackdrop) requestBackdrop.style.display = 'none';
+    });
+
+    requestForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const username = cleanUsername(requestUsername.value);
+      const email = requestEmail.value.trim().toLowerCase();
+      if (!validUsername(username)) {
+        requestMessage.textContent = 'Digite um @ válido: letras, números, ponto ou sublinhado.';
+        requestUsername.focus(); return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        requestMessage.textContent = 'Digite um endereço de e-mail válido.';
+        requestEmail.focus(); return;
+      }
+      requestConfirm.disabled = true;
+      requestMessage.textContent = 'Registrando pedido e enviando código…';
+      try {
+        setupSupabase();
+        const normalized = username.toLowerCase();
+        const { error: requestError } = await supabaseClient
+          .from(VERIFICATION_REQUESTS_TABLE)
+          .insert({ username, email });
+        if (requestError) throw new Error('Não foi possível registrar o pedido. Confira se executou o SQL de confirmação por e-mail no Supabase. Detalhe: ' + (requestError.message || requestError.code || 'erro desconhecido'));
+        const { error: emailError } = await supabaseClient.auth.signInWithOtp({
+          email,
+          options: { shouldCreateUser: true }
+        });
+        if (emailError) throw new Error('O pedido foi registrado, mas o código não pôde ser enviado. Confira o modelo de e-mail OTP e a configuração de e-mail do Supabase. Detalhe: ' + (emailError.message || emailError.code || 'erro desconhecido'));
+        pendingVerification = { username: normalized, email };
+        requestUsername.disabled = true;
+        requestEmail.disabled = true;
+        requestConfirm.style.display = 'none';
+        otpArea.style.display = 'block';
+        requestOtp.value = '';
+        requestOtp.focus();
+        requestMessage.textContent = 'Código enviado! Digite os 6 dígitos recebidos. Se não chegar, confira spam e solicite um novo código.';
+      } catch (e) {
+        console.error(e);
+        requestMessage.textContent = e.message || 'Não foi possível enviar o código.';
+      } finally { requestConfirm.disabled = false; }
+    });
+
+    verifyOtpButton.addEventListener('click', async () => {
+      const token = requestOtp.value.trim();
+      if (!pendingVerification) {
+        requestMessage.textContent = 'Solicite um código primeiro.';
+        return;
+      }
+      if (!/^\d{6}$/.test(token)) {
+        requestMessage.textContent = 'Digite o código de 6 dígitos recebido por e-mail.';
+        requestOtp.focus(); return;
+      }
+      verifyOtpButton.disabled = true;
+      requestMessage.textContent = 'Validando código…';
+      try {
+        setupSupabase();
+        const { data: authData, error: otpError } = await supabaseClient.auth.verifyOtp({
+          email: pendingVerification.email,
+          token,
+          type: 'email'
+        });
+        if (otpError || !authData?.session?.user?.email) {
+          throw new Error('Código inválido ou expirado. Solicite um novo código e use o mais recente.');
+        }
+        const email = authData.session.user.email.toLowerCase();
+        const { data: approvedRows, error: approveError } = await supabaseClient
+          .from(VERIFICATION_REQUESTS_TABLE)
+          .update({ status: 'approved' })
+          .eq('username_normalized', pendingVerification.username)
+          .eq('email', email)
+          .eq('status', 'pending')
+          .select('id');
+        if (approveError) throw new Error('E-mail confirmado, mas o @ não foi liberado. Confira o SQL e as permissões no Supabase. Detalhe: ' + (approveError.message || approveError.code || 'erro desconhecido'));
+        if (!approvedRows || approvedRows.length === 0) {
+          throw new Error('O e-mail foi confirmado, mas não encontrei um pedido pendente correspondente. Feche esta janela e faça uma nova solicitação para o mesmo @ e e-mail.');
+        }
+        requestMessage.textContent = 'E-mail confirmado! Se o @ já estiver cadastrado na tela, ele agora poderá ser clicável. Atualize a página para ver a mudança.';
+        verifyOtpButton.style.display = 'none';
+        requestOtp.style.display = 'none';
+        pendingVerification = null;
+      } catch (e) {
+        console.error(e);
+        requestMessage.textContent = e.message || 'Não foi possível confirmar o código.';
+      } finally { verifyOtpButton.disabled = false; }
+    });
+
+    function animate(time) {
+      if (!started) return;
+      if (!previous) previous = time;
+      const dt = Math.min((time - previous) / 1000, 0.04);
+      previous = time;
+      for (const tag of tags.values()) {
+        const w = tag.el.offsetWidth, h = tag.el.offsetHeight;
+        const limitX = Math.max(0, innerWidth - w), limitY = Math.max(0, innerHeight - h);
+        tag.x += tag.vx * dt; tag.y += tag.vy * dt;
+        if (tag.x <= 0) { tag.x = 0; tag.vx = Math.abs(tag.vx); }
+        if (tag.x >= limitX) { tag.x = limitX; tag.vx = -Math.abs(tag.vx); }
+        if (tag.y <= 0) { tag.y = 0; tag.vy = Math.abs(tag.vy); }
+        if (tag.y >= limitY) { tag.y = limitY; tag.vy = -Math.abs(tag.vy); }
+        if (Math.random() < 0.004) { const a = Math.random() * Math.PI * 2, speed = 55 + Math.random() * 90; tag.vx = Math.cos(a) * speed; tag.vy = Math.sin(a) * speed; }
+        tag.el.style.transform = `translate(${tag.x}px, ${tag.y}px)`;
+      }
+      requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('resize', () => {
+      for (const tag of tags.values()) {
+        tag.x = Math.min(tag.x, Math.max(0, innerWidth - tag.el.offsetWidth));
+        tag.y = Math.min(tag.y, Math.max(0, innerHeight - tag.el.offsetHeight));
+      }
+    });
+
+    setInterval(() => {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone:'America/Sao_Paulo', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+      if (today === lastRewardDate) return;
+      lastRewardDate = today;
+      for (const state of nameElements.values()) renderName(state.row);
+      if (currentRewardUsername) {
+        const state = nameElements.get(currentRewardUsername);
+        if (state && rewardPanel.style.display !== 'none') showDailyReward(state.row);
+      }
+    }, 60000);
+
+    input.focus();
+  </script>
+</body>
+</html>
